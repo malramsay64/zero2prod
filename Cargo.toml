@@ -24,6 +24,7 @@ tracing-futures = ""
 tracing-subscriber = {version = "", features = ["registry", "env-filter"]}
 tracing-bunyan-formatter = ""
 tracing-log = ""
+tracing-actix-web = "0.3.0-beta.2"
 env_logger = ""
 
 [dependencies.sqlx]
@@ -35,10 +36,12 @@ features = [
     "postgres",
     "uuid",
     "chrono",
-    "migrate"
+    "migrate",
+    "offline",
 ]
 
 [dev-dependencies]
 reqwest = "*"
 tokio = "1"
 actix-rt = "2"
+lazy_static = "*"

@@ -1,9 +1,10 @@
 use sqlx::{Connection, Executor, PgConnection, PgPool};
 use uuid::Uuid;
+use wiremock::MockServer;
 
 use zero2prod::configuration::{get_configuration, DatabaseSettings};
-use zero2prod::telemetry::{get_subscriber, init_subscriber};
 use zero2prod::startup::{get_connection_pool, Application};
+use zero2prod::telemetry::{get_subscriber, init_subscriber};
 
 // Ensure the tracing stack is only initialised once with lazy_static
 lazy_static::lazy_static! {
@@ -17,6 +18,8 @@ lazy_static::lazy_static! {
 pub struct TestApp {
     pub address: String,
     pub db_pool: PgPool,
+    pub email_server: MockServer,
+    pub port: u16,
 }
 
 impl TestApp {
@@ -29,13 +32,14 @@ impl TestApp {
             .await
             .expect("failed to execute request.")
     }
-    }
-
+}
 
 pub async fn spawn_app() -> TestApp {
     // The first time we call initialize, the code is run. Subsequent invocations skip this
     // execution.
     lazy_static::initialize(&TRACING);
+
+    let email_server = MockServer::start().await;
 
     let configuration = {
         let mut c = get_configuration().expect("Failed to read configuration");
@@ -44,21 +48,28 @@ pub async fn spawn_app() -> TestApp {
         c.database.database_name = Uuid::new_v4().to_string();
 
         c.application.port = 0;
+        c.email_client.base_url = email_server.uri();
         c
     };
     // Create and migrate the database
     configure_database(&configuration.database).await;
 
-    let application = Application::build(configuration.clone()).await.expect("Failed to build the application.");
+    let application = Application::build(configuration.clone())
+        .await
+        .expect("Failed to build the application.");
 
     let address = format!("http://127.0.0.1:{}", application.port());
 
-
+    let application_port = application.port();
     let _ = tokio::spawn(application.run_until_stopped());
 
     TestApp {
         address,
-        db_pool: get_connection_pool(&configuration.database).await.expect("Failed to connect to the database."),
+        port: application_port,
+        db_pool: get_connection_pool(&configuration.database)
+            .await
+            .expect("Failed to connect to the database."),
+        email_server,
     }
 }
 
